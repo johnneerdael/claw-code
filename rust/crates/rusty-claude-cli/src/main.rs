@@ -9,6 +9,7 @@
 mod init;
 mod input;
 mod render;
+mod completions;
 
 use std::collections::BTreeSet;
 use std::env;
@@ -34,6 +35,7 @@ use commands::{
     handle_skills_slash_command, render_slash_command_help, resume_supported_slash_commands,
     slash_command_specs, validate_slash_command_input, SlashCommand,
 };
+use completions::CompletionShell;
 use compat_harness::{extract_manifest, UpstreamPaths};
 use init::initialize_repo;
 use plugins::{PluginHooks, PluginManager, PluginManagerConfig, PluginRegistry};
@@ -133,6 +135,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         CliAction::Login => run_login()?,
         CliAction::Logout => run_logout()?,
         CliAction::Init => run_init()?,
+        CliAction::Completions { shell } => print_completions(shell)?,
         CliAction::Repl {
             model,
             allowed_tools,
@@ -180,6 +183,9 @@ enum CliAction {
     Login,
     Logout,
     Init,
+    Completions {
+        shell: CompletionShell,
+    },
     Repl {
         model: String,
         allowed_tools: Option<AllowedToolSet>,
@@ -358,6 +364,7 @@ fn parse_args(args: &[String]) -> Result<CliAction, String> {
         "login" => Ok(CliAction::Login),
         "logout" => Ok(CliAction::Logout),
         "init" => Ok(CliAction::Init),
+        "completions" => parse_completion_args(&rest[1..]),
         "prompt" => {
             let prompt = rest[1..].join(" ");
             if prompt.trim().is_empty() {
@@ -415,6 +422,7 @@ fn bare_slash_command_guidance(command_name: &str) -> Option<String> {
             | "login"
             | "logout"
             | "init"
+            | "completions"
             | "prompt"
     ) {
         return None;
@@ -681,6 +689,25 @@ fn parse_system_prompt_args(args: &[String]) -> Result<CliAction, String> {
     }
 
     Ok(CliAction::PrintSystemPrompt { cwd, date })
+}
+
+fn parse_completion_args(args: &[String]) -> Result<CliAction, String> {
+    match args {
+        [shell] => {
+            let Some(shell) = CompletionShell::parse(shell) else {
+                return Err(format!(
+                    "unsupported completion shell `{shell}`; supported shells: {}",
+                    CompletionShell::supported_shells().join(", ")
+                ));
+            };
+            Ok(CliAction::Completions { shell })
+        }
+        [] => Err(format!(
+            "completions subcommand requires a shell argument ({})",
+            CompletionShell::supported_shells().join(", ")
+        )),
+        _ => Err("completions subcommand accepts exactly one shell argument".to_string()),
+    }
 }
 
 fn parse_resume_args(args: &[String]) -> Result<CliAction, String> {
@@ -3123,6 +3150,11 @@ fn run_init() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn print_completions(shell: CompletionShell) -> Result<(), Box<dyn std::error::Error>> {
+    io::stdout().write_all(shell.render().as_bytes())?;
+    Ok(())
+}
+
 fn normalize_permission_mode(mode: &str) -> Option<&'static str> {
     match mode.trim() {
         "read-only" => Some("read-only"),
@@ -5098,6 +5130,7 @@ fn print_help_to(out: &mut impl Write) -> io::Result<()> {
     writeln!(out, "  claw login")?;
     writeln!(out, "  claw logout")?;
     writeln!(out, "  claw init")?;
+    writeln!(out, "  claw completions <bash|zsh|powershell>")?;
     writeln!(out)?;
     writeln!(out, "Flags:")?;
     writeln!(
@@ -5193,7 +5226,7 @@ mod tests {
         resolve_model_alias, resolve_session_reference, response_to_events,
         resume_supported_slash_commands, run_resume_command,
         slash_command_completion_candidates_with_sessions, status_context, validate_no_args,
-        CliAction, CliOutputFormat, GitWorkspaceSummary, InternalPromptProgressEvent,
+        CliAction, CliOutputFormat, CompletionShell, GitWorkspaceSummary, InternalPromptProgressEvent,
         InternalPromptProgressState, LiveCli, SlashCommand, StatusUsage, DEFAULT_MODEL,
     };
     use api::{MessageResponse, OutputContentBlock, Usage};
@@ -5547,6 +5580,13 @@ mod tests {
         assert_eq!(
             parse_args(&["init".to_string()]).expect("init should parse"),
             CliAction::Init
+        );
+        assert_eq!(
+            parse_args(&["completions".to_string(), "bash".to_string()])
+                .expect("completions should parse"),
+            CliAction::Completions {
+                shell: CompletionShell::Bash
+            }
         );
         assert_eq!(
             parse_args(&["agents".to_string()]).expect("agents should parse"),
@@ -5985,10 +6025,18 @@ mod tests {
         assert!(help.contains("claw status"));
         assert!(help.contains("claw sandbox"));
         assert!(help.contains("claw init"));
+        assert!(help.contains("claw completions <bash|zsh|powershell>"));
         assert!(help.contains("claw agents"));
         assert!(help.contains("claw mcp"));
         assert!(help.contains("claw skills"));
         assert!(help.contains("claw /skills"));
+    }
+
+    #[test]
+    fn rejects_unsupported_completion_shells() {
+        let error = parse_args(&["completions".to_string(), "fish".to_string()])
+            .expect_err("unknown shell should fail");
+        assert!(error.contains("supported shells"));
     }
 
     #[test]
