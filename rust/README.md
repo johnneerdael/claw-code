@@ -17,6 +17,74 @@ cargo build --release
 
 # With specific model
 ./target/release/claw --model sonnet prompt "fix the bug in main.rs"
+
+# Emit installable shell completions
+./target/release/claw completions bash
+./target/release/claw completions zsh
+./target/release/claw completions powershell
+```
+
+## Native Installer Packaging
+
+Tagged GitHub releases are intended to publish native installers plus raw fallback archives:
+
+- macOS unsigned `.pkg` for `x86_64-apple-darwin`
+- macOS unsigned `.pkg` for `aarch64-apple-darwin`
+- Windows unsigned `.msi` for `x86_64-pc-windows-msvc`
+
+Unsigned installer caveats:
+
+- macOS Gatekeeper will warn before opening the `.pkg`
+- Windows SmartScreen may warn before launching the `.msi`
+
+### Local macOS packaging
+
+```bash
+cd rust/
+
+cargo build --release -p rusty-claude-cli --bin claw
+
+python3 scripts/stage_release_payload.py \
+  --binary target/release/claw \
+  --target x86_64-apple-darwin \
+  --output dist/local-macos/payload
+
+python3 scripts/verify_release_payload.py \
+  --payload dist/local-macos/payload \
+  --target x86_64-apple-darwin
+
+sh packaging/macos/build-pkg.sh \
+  --payload dist/local-macos/payload \
+  --identifier dev.instructkr.claw \
+  --version 0.1.0 \
+  --output dist/local-macos/claw.pkg
+
+sh packaging/macos/inspect-pkg.sh dist/local-macos/claw.pkg
+```
+
+### Local Windows packaging
+
+```powershell
+cd rust
+
+cargo build --release -p rusty-claude-cli --bin claw --target x86_64-pc-windows-msvc
+
+python scripts/stage_release_payload.py `
+  --binary target/x86_64-pc-windows-msvc/release/claw.exe `
+  --target x86_64-pc-windows-msvc `
+  --output dist/x86_64-pc-windows-msvc/payload
+
+python scripts/verify_release_payload.py `
+  --payload dist/x86_64-pc-windows-msvc/payload `
+  --target x86_64-pc-windows-msvc
+
+./packaging/windows/build-msi.ps1 `
+  -PayloadDir dist/x86_64-pc-windows-msvc/payload `
+  -Version 0.1.0 `
+  -OutFile dist/x86_64-pc-windows-msvc/claw.msi
+
+./packaging/windows/inspect-msi.ps1 `
+  -MsiPath dist/x86_64-pc-windows-msvc/claw.msi
 ```
 
 ## Configuration

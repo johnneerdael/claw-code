@@ -5219,7 +5219,8 @@ mod tests {
         format_permissions_report, format_permissions_switch_report, format_pr_report,
         format_resume_report, format_status_report, format_tool_call_start, format_tool_result,
         format_ultraplan_report, format_unknown_slash_command,
-        format_unknown_slash_command_message, normalize_permission_mode, parse_args,
+        format_unknown_slash_command_message, normalize_permission_mode,
+        parse_args as parse_cli_args,
         parse_git_status_branch, parse_git_status_metadata_for, parse_git_workspace_summary,
         permission_policy, print_help_to, push_output_block, render_config_report,
         render_diff_report, render_memory_report, render_repl_help, render_resume_usage,
@@ -5241,6 +5242,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Mutex, MutexGuard, OnceLock};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tools::GlobalToolRegistry;
@@ -5270,11 +5272,16 @@ mod tests {
     }
 
     fn temp_dir() -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time should be after epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("rusty-claude-cli-{nanos}"))
+        let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "rusty-claude-cli-{}-{nanos}-{counter}",
+            std::process::id()
+        ))
     }
 
     fn git(args: &[&str], cwd: &Path) {
@@ -5295,6 +5302,27 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn parse_args(args: &[String]) -> Result<CliAction, String> {
+        let _guard = env_lock();
+        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        let original_permission_mode = std::env::var("RUSTY_CLAUDE_PERMISSION_MODE").ok();
+        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("RUSTY_CLAUDE_PERMISSION_MODE");
+
+        let result = parse_cli_args(args);
+
+        match original_config_home {
+            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
+            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+        }
+        match original_permission_mode {
+            Some(value) => std::env::set_var("RUSTY_CLAUDE_PERMISSION_MODE", value),
+            None => std::env::remove_var("RUSTY_CLAUDE_PERMISSION_MODE"),
+        }
+
+        result
     }
 
     fn with_current_dir<T>(cwd: &Path, f: impl FnOnce() -> T) -> T {

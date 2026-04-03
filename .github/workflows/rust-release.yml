@@ -1,0 +1,158 @@
+name: Rust Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: rust
+
+jobs:
+  test:
+    name: cargo test --workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+  release-macos:
+    name: macOS ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            target: x86_64-apple-darwin
+          - runner: macos-14
+            target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+      - name: Build release binary
+        run: cargo build --release -p rusty-claude-cli --bin claw --target ${{ matrix.target }}
+      - name: Stage payload
+        run: |
+          python3 scripts/stage_release_payload.py \
+            --binary target/${{ matrix.target }}/release/claw \
+            --target ${{ matrix.target }} \
+            --output dist/${{ matrix.target }}/payload
+      - name: Verify payload
+        run: python3 scripts/verify_release_payload.py --payload dist/${{ matrix.target }}/payload --target ${{ matrix.target }}
+      - name: Build pkg
+        run: |
+          sh packaging/macos/build-pkg.sh \
+            --payload dist/${{ matrix.target }}/payload \
+            --identifier dev.instructkr.claw \
+            --version ${GITHUB_REF_NAME#v} \
+            --output dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.pkg
+      - name: Inspect pkg
+        run: sh packaging/macos/inspect-pkg.sh dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.pkg
+      - name: Create archive and checksum
+        run: |
+          tar -C dist/${{ matrix.target }}/payload -czf dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.tar.gz .
+          shasum -a 256 \
+            dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.pkg \
+            dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.tar.gz \
+            > dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.sha256
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            rust/dist/${{ matrix.target }}/*.pkg
+            rust/dist/${{ matrix.target }}/*.tar.gz
+            rust/dist/${{ matrix.target }}/*.sha256
+
+  release-windows:
+    name: Windows x86_64-pc-windows-msvc
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          Add-Content -Path $env:GITHUB_PATH -Value "$HOME/.dotnet/tools"
+      - name: Build release binary
+        run: cargo build --release -p rusty-claude-cli --bin claw --target x86_64-pc-windows-msvc
+      - name: Stage payload
+        shell: pwsh
+        run: |
+          python scripts/stage_release_payload.py `
+            --binary target/x86_64-pc-windows-msvc/release/claw.exe `
+            --target x86_64-pc-windows-msvc `
+            --output dist/x86_64-pc-windows-msvc/payload
+      - name: Verify payload
+        shell: pwsh
+        run: python scripts/verify_release_payload.py --payload dist/x86_64-pc-windows-msvc/payload --target x86_64-pc-windows-msvc
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          ./packaging/windows/build-msi.ps1 `
+            -PayloadDir dist/x86_64-pc-windows-msvc/payload `
+            -Version $env:GITHUB_REF_NAME.Substring(1) `
+            -OutFile dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi
+      - name: Inspect MSI
+        shell: pwsh
+        run: ./packaging/windows/inspect-msi.ps1 -MsiPath dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi
+      - name: Create archive and checksum
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/x86_64-pc-windows-msvc/payload/* -DestinationPath dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip -Force
+          $pkgHash = (Get-FileHash dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi -Algorithm SHA256).Hash.ToLower()
+          $zipHash = (Get-FileHash dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower()
+          @(
+            "$pkgHash  claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi"
+            "$zipHash  claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip"
+          ) | Set-Content dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.sha256
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-x86_64-pc-windows-msvc
+          path: |
+            rust/dist/x86_64-pc-windows-msvc/*.msi
+            rust/dist/x86_64-pc-windows-msvc/*.zip
+            rust/dist/x86_64-pc-windows-msvc/*.sha256
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - release-macos
+      - release-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+      - name: Publish assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-artifacts/**/*

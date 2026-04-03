@@ -1,0 +1,10 @@
+[dist]
+cargo-dist-version = "0.30.2"
+ci = ["github"]
+allow-dirty = ["ci"]
+checksum = "sha256"
+targets = [
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]

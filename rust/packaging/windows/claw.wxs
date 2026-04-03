@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Claw"
+    Manufacturer="instructkr"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="$(var.UpgradeCode)"
+    InstallerVersion="500"
+    Compressed="yes"
+    Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Claw is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLROOT" Name="Claw">
+        <Directory Id="BIN_DIR" Name="bin">
+          <Component Id="ClawBinary" Guid="*">
+            <File Id="ClawExe" Source="$(var.PayloadDir)\bin\claw.exe" KeyPath="yes" />
+          </Component>
+          <Component Id="ClawPathEntry" Guid="*">
+            <Environment
+              Id="ClawBinOnPath"
+              Name="PATH"
+              Action="set"
+              Part="last"
+              Permanent="no"
+              System="yes"
+              Value="[BIN_DIR]" />
+            <RegistryValue
+              Root="HKLM"
+              Key="Software\instructkr\Claw"
+              Name="PathEntry"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+          </Component>
+        </Directory>
+
+        <Directory Id="COMPLETIONS_DIR" Name="completions">
+          <Component Id="ClawPowerShellCompletion" Guid="*">
+            <File
+              Id="ClawPowerShellCompletionFile"
+              Source="$(var.PayloadDir)\completions\powershell\claw.ps1"
+              KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Complete" Title="Claw" Level="1">
+      <ComponentRef Id="ClawBinary" />
+      <ComponentRef Id="ClawPathEntry" />
+      <ComponentRef Id="ClawPowerShellCompletion" />
+    </Feature>
+  </Package>
+</Wix>
