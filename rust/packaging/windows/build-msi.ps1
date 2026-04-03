@@ -37,6 +37,12 @@ $ResolvedOutFile = Join-Path $ResolvedOutDir (Split-Path -Leaf $OutFile)
     -d PayloadDir="$ResolvedPayloadDir" `
     -d ProductVersion="$ProductVersion" `
     -d UpgradeCode="$UpgradeCode" `
-    -o $ResolvedOutFile 1>&2
+    -o $ResolvedOutFile 2>&1 | ForEach-Object {
+        [Console]::Error.WriteLine($_)
+    }
+
+if ($LASTEXITCODE -ne 0) {
+    throw "wix build failed with exit code $LASTEXITCODE"
+}
 
 Write-Output $ResolvedOutFile
