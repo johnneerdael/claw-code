@@ -99,19 +99,22 @@ jobs:
       - name: Verify payload
         run: python3 scripts/verify_release_payload.py --payload dist/${{ matrix.target }}/payload --target ${{ matrix.target }}
       - name: Build pkg
+        id: build_pkg
         run: |
-          sh packaging/macos/build-pkg.sh \
+          pkg_path="$(sh packaging/macos/build-pkg.sh \
             --payload dist/${{ matrix.target }}/payload \
             --identifier dev.instructkr.claw \
             --version ${{ needs.release-meta.outputs.package_version }} \
-            --output dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg
+            --output dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg)"
+          echo "pkg_path=$pkg_path" >> "$GITHUB_OUTPUT"
       - name: Inspect pkg
-        run: sh packaging/macos/inspect-pkg.sh dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg
+        run: sh packaging/macos/inspect-pkg.sh "${{ steps.build_pkg.outputs.pkg_path }}"
       - name: Create archive and checksum
         run: |
+          pkg_path="${{ steps.build_pkg.outputs.pkg_path }}"
           tar -C dist/${{ matrix.target }}/payload -czf dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.tar.gz .
           shasum -a 256 \
-            dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg \
+            "$pkg_path" \
             dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.tar.gz \
             > dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.sha256
       - name: Upload release bundle
@@ -155,20 +158,23 @@ jobs:
         shell: pwsh
         run: python scripts/verify_release_payload.py --payload dist/x86_64-pc-windows-msvc/payload --target x86_64-pc-windows-msvc
       - name: Build MSI
+        id: build_msi
         shell: pwsh
         run: |
-          ./packaging/windows/build-msi.ps1 `
+          $msiPath = ./packaging/windows/build-msi.ps1 `
             -PayloadDir dist/x86_64-pc-windows-msvc/payload `
             -Version '${{ needs.release-meta.outputs.package_version }}' `
             -OutFile dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi
+          "msi_path=$msiPath" >> $env:GITHUB_OUTPUT
       - name: Inspect MSI
         shell: pwsh
-        run: ./packaging/windows/inspect-msi.ps1 -MsiPath dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi
+        run: ./packaging/windows/inspect-msi.ps1 -MsiPath '${{ steps.build_msi.outputs.msi_path }}'
       - name: Create archive and checksum
         shell: pwsh
         run: |
+          $msiPath = '${{ steps.build_msi.outputs.msi_path }}'
           Compress-Archive -Path dist/x86_64-pc-windows-msvc/payload/* -DestinationPath dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.zip -Force
-          $pkgHash = (Get-FileHash dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi -Algorithm SHA256).Hash.ToLower()
+          $pkgHash = (Get-FileHash $msiPath -Algorithm SHA256).Hash.ToLower()
           $zipHash = (Get-FileHash dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower()
           @(
             "$pkgHash  ${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi"

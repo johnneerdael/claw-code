@@ -19,17 +19,17 @@ function Convert-ToMsiVersion {
     return $InputVersion
 }
 
-$ResolvedPayloadDir = (Resolve-Path $PayloadDir).Path
-$ResolvedOutDir = [System.IO.Path]::GetDirectoryName((Resolve-Path -LiteralPath (Split-Path -Parent $OutFile) -ErrorAction SilentlyContinue)?.Path ?? (Split-Path -Parent $OutFile))
-if (-not $ResolvedOutDir) {
-    $ResolvedOutDir = (Get-Location).Path
-}
-New-Item -ItemType Directory -Force -Path $ResolvedOutDir | Out-Null
-$ResolvedOutFile = Join-Path $ResolvedOutDir (Split-Path -Leaf $OutFile)
-
 $WixSource = Join-Path $PSScriptRoot "claw.wxs"
 $UpgradeCode = "5B789F3F-6E13-4D77-98D5-1B8D6DEB5F51"
 $ProductVersion = Convert-ToMsiVersion -InputVersion $Version
+$ResolvedPayloadDir = (Resolve-Path $PayloadDir).Path
+$OutDir = Split-Path -Parent $OutFile
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+    $OutDir = (Get-Location).Path
+}
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+$ResolvedOutDir = (Resolve-Path $OutDir).Path
+$ResolvedOutFile = Join-Path $ResolvedOutDir (Split-Path -Leaf $OutFile)
 
 wix build `
     $WixSource `
