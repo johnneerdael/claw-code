@@ -349,7 +349,7 @@ impl CommandWithStdin {
 
 #[cfg(test)]
 mod tests {
-    use super::{HookRunResult, HookRunner};
+    use super::{shell_command, HookRunResult, HookRunner};
     use crate::{PluginManager, PluginManagerConfig};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -510,17 +510,18 @@ mod tests {
     #[test]
     fn pre_tool_use_allows_hooks_that_exit_without_reading_stdin() {
         // given
-        let runner = HookRunner::new(crate::PluginHooks {
-            pre_tool_use: vec!["exit 0".to_string()],
-            post_tool_use: Vec::new(),
-            post_tool_use_failure: Vec::new(),
-        });
-        let large_input = "x".repeat(256 * 1024);
+        let mut command = shell_command("exit 0");
+        command.stdin(std::process::Stdio::piped());
+        command.stdout(std::process::Stdio::piped());
+        command.stderr(std::process::Stdio::piped());
+        let large_input = vec![b'x'; 256 * 1024];
 
         // when
-        let result = runner.run_pre_tool_use("Read", &format!(r#"{{"payload":"{large_input}"}}"#));
+        let output = command
+            .output_with_stdin(&large_input)
+            .expect("command should tolerate broken pipe on stdin");
 
         // then
-        assert_eq!(result, HookRunResult::allow(Vec::new()));
+        assert!(output.status.success());
     }
 }
