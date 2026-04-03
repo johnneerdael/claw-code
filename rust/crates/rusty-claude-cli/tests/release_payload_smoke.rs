@@ -28,15 +28,21 @@ fn staging_script_writes_binary_and_completion_assets() {
 
     assert_success(&output);
     assert!(output_dir.join("bin").join("claw").is_file());
-    assert!(output_dir.join("completions").join("bash").join("claw").is_file());
-    assert!(output_dir.join("completions").join("zsh").join("_claw").is_file());
-    assert!(
-        output_dir
-            .join("completions")
-            .join("powershell")
-            .join("claw.ps1")
-            .is_file()
-    );
+    assert!(output_dir
+        .join("completions")
+        .join("bash")
+        .join("claw")
+        .is_file());
+    assert!(output_dir
+        .join("completions")
+        .join("zsh")
+        .join("_claw")
+        .is_file());
+    assert!(output_dir
+        .join("completions")
+        .join("powershell")
+        .join("claw.ps1")
+        .is_file());
     assert!(output_dir.join("docs").join("README.md").is_file());
 
     fs::remove_dir_all(temp_dir).expect("cleanup temp dir");

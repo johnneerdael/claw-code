@@ -6,10 +6,10 @@
     clippy::unnecessary_wraps,
     clippy::unused_self
 )]
+mod completions;
 mod init;
 mod input;
 mod render;
-mod completions;
 
 use std::collections::BTreeSet;
 use std::env;
@@ -35,17 +35,16 @@ use commands::{
     handle_skills_slash_command, render_slash_command_help, resume_supported_slash_commands,
     slash_command_specs, validate_slash_command_input, SlashCommand,
 };
-use completions::CompletionShell;
 use compat_harness::{extract_manifest, UpstreamPaths};
+use completions::CompletionShell;
 use init::initialize_repo;
 use plugins::{PluginHooks, PluginManager, PluginManagerConfig, PluginRegistry};
 use render::{MarkdownStreamState, Spinner, TerminalRenderer};
 use runtime::{
     clear_oauth_credentials, generate_pkce_pair, generate_state, load_system_prompt,
-    parse_oauth_callback_request_target, resolve_sandbox_status, save_oauth_credentials,
-    ApiClient, ApiRequest, AssistantEvent,
-    CompactionConfig, ConfigLoader, ConfigSource, ContentBlock, ConversationMessage,
-    ConversationRuntime, MessageRole, OAuthAuthorizationRequest, OAuthConfig,
+    parse_oauth_callback_request_target, resolve_sandbox_status, save_oauth_credentials, ApiClient,
+    ApiRequest, AssistantEvent, CompactionConfig, ConfigLoader, ConfigSource, ContentBlock,
+    ConversationMessage, ConversationRuntime, MessageRole, OAuthAuthorizationRequest, OAuthConfig,
     OAuthTokenExchangeRequest, PermissionMode, PermissionPolicy, ProjectContext, PromptCacheEvent,
     ResolvedPermissionMode, RuntimeError, Session, TokenUsage, ToolError, ToolExecutor,
     UsageTracker,
@@ -5220,15 +5219,15 @@ mod tests {
         format_resume_report, format_status_report, format_tool_call_start, format_tool_result,
         format_ultraplan_report, format_unknown_slash_command,
         format_unknown_slash_command_message, normalize_permission_mode,
-        parse_args as parse_cli_args,
-        parse_git_status_branch, parse_git_status_metadata_for, parse_git_workspace_summary,
-        permission_policy, print_help_to, push_output_block, render_config_report,
-        render_diff_report, render_memory_report, render_repl_help, render_resume_usage,
-        resolve_model_alias, resolve_session_reference, response_to_events,
+        parse_args as parse_cli_args, parse_git_status_branch, parse_git_status_metadata_for,
+        parse_git_workspace_summary, permission_policy, print_help_to, push_output_block,
+        render_config_report, render_diff_report, render_memory_report, render_repl_help,
+        render_resume_usage, resolve_model_alias, resolve_session_reference, response_to_events,
         resume_supported_slash_commands, run_resume_command,
         slash_command_completion_candidates_with_sessions, status_context, validate_no_args,
-        CliAction, CliOutputFormat, CompletionShell, GitWorkspaceSummary, InternalPromptProgressEvent,
-        InternalPromptProgressState, LiveCli, SlashCommand, StatusUsage, DEFAULT_MODEL,
+        CliAction, CliOutputFormat, CompletionShell, GitWorkspaceSummary,
+        InternalPromptProgressEvent, InternalPromptProgressState, LiveCli, SlashCommand,
+        StatusUsage, DEFAULT_MODEL,
     };
     use api::{MessageResponse, OutputContentBlock, Usage};
     use plugins::{
@@ -5980,7 +5979,11 @@ mod tests {
             .map(|spec| spec.name)
             .collect::<Vec<_>>();
         // Now with 135+ slash commands, verify minimum resume support
-        assert!(names.len() >= 39, "expected at least 39 resume-supported commands, got {}", names.len());
+        assert!(
+            names.len() >= 39,
+            "expected at least 39 resume-supported commands, got {}",
+            names.len()
+        );
         // Verify key resume commands still exist
         assert!(names.contains(&"help"));
         assert!(names.contains(&"status"));
