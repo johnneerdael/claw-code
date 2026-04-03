@@ -2,6 +2,8 @@ name: Rust Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -17,8 +19,43 @@ defaults:
     working-directory: rust
 
 jobs:
+  release-meta:
+    name: Compute release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.meta.outputs.channel }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      asset_prefix: ${{ steps.meta.outputs.asset_prefix }}
+      package_version: ${{ steps.meta.outputs.package_version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        shell: bash
+        run: |
+          short_sha="$(git rev-parse --short=7 HEAD)"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            raw_version="${GITHUB_REF_NAME#v}"
+            echo "channel=release" >> "$GITHUB_OUTPUT"
+            echo "release_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "release_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "asset_prefix=claw-${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "package_version=${raw_version}" >> "$GITHUB_OUTPUT"
+          else
+            package_version="$(date -u +'%Y.%-m%d').${GITHUB_RUN_NUMBER}"
+            echo "channel=snapshot" >> "$GITHUB_OUTPUT"
+            echo "release_name=main-snapshot" >> "$GITHUB_OUTPUT"
+            echo "release_tag=main-snapshot" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "asset_prefix=claw-main-${short_sha}" >> "$GITHUB_OUTPUT"
+            echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: cargo test --workspace
+    needs: release-meta
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +68,9 @@ jobs:
 
   release-macos:
     name: macOS ${{ matrix.target }}
-    needs: test
+    needs:
+      - release-meta
+      - test
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -64,17 +103,17 @@ jobs:
           sh packaging/macos/build-pkg.sh \
             --payload dist/${{ matrix.target }}/payload \
             --identifier dev.instructkr.claw \
-            --version ${GITHUB_REF_NAME#v} \
-            --output dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.pkg
+            --version ${{ needs.release-meta.outputs.package_version }} \
+            --output dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg
       - name: Inspect pkg
-        run: sh packaging/macos/inspect-pkg.sh dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.pkg
+        run: sh packaging/macos/inspect-pkg.sh dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg
       - name: Create archive and checksum
         run: |
-          tar -C dist/${{ matrix.target }}/payload -czf dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.tar.gz .
+          tar -C dist/${{ matrix.target }}/payload -czf dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.tar.gz .
           shasum -a 256 \
-            dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.pkg \
-            dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.tar.gz \
-            > dist/${{ matrix.target }}/claw-${{ github.ref_name }}-${{ matrix.target }}.sha256
+            dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.pkg \
+            dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.tar.gz \
+            > dist/${{ matrix.target }}/${{ needs.release-meta.outputs.asset_prefix }}-${{ matrix.target }}.sha256
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
@@ -86,7 +125,9 @@ jobs:
 
   release-windows:
     name: Windows x86_64-pc-windows-msvc
-    needs: test
+    needs:
+      - release-meta
+      - test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,21 +159,21 @@ jobs:
         run: |
           ./packaging/windows/build-msi.ps1 `
             -PayloadDir dist/x86_64-pc-windows-msvc/payload `
-            -Version $env:GITHUB_REF_NAME.Substring(1) `
-            -OutFile dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi
+            -Version '${{ needs.release-meta.outputs.package_version }}' `
+            -OutFile dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi
       - name: Inspect MSI
         shell: pwsh
-        run: ./packaging/windows/inspect-msi.ps1 -MsiPath dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi
+        run: ./packaging/windows/inspect-msi.ps1 -MsiPath dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi
       - name: Create archive and checksum
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/x86_64-pc-windows-msvc/payload/* -DestinationPath dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip -Force
-          $pkgHash = (Get-FileHash dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi -Algorithm SHA256).Hash.ToLower()
-          $zipHash = (Get-FileHash dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower()
+          Compress-Archive -Path dist/x86_64-pc-windows-msvc/payload/* -DestinationPath dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.zip -Force
+          $pkgHash = (Get-FileHash dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi -Algorithm SHA256).Hash.ToLower()
+          $zipHash = (Get-FileHash dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.zip -Algorithm SHA256).Hash.ToLower()
           @(
-            "$pkgHash  claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.msi"
-            "$zipHash  claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.zip"
-          ) | Set-Content dist/x86_64-pc-windows-msvc/claw-${{ github.ref_name }}-x86_64-pc-windows-msvc.sha256
+            "$pkgHash  ${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi"
+            "$zipHash  ${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.zip"
+          ) | Set-Content dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.sha256
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
@@ -145,6 +186,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs:
+      - release-meta
       - release-macos
       - release-windows
     runs-on: ubuntu-latest
@@ -152,7 +194,20 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist-artifacts
+      - name: Remove previous snapshot assets
+        if: needs.release-meta.outputs.channel == 'snapshot'
+        uses: mknejp/delete-release-assets@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.release-meta.outputs.release_tag }}
+          fail-if-no-assets: false
+          fail-if-no-release: false
+          assets: "*"
       - name: Publish assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.release-meta.outputs.release_tag }}
+          name: ${{ needs.release-meta.outputs.release_name }}
+          prerelease: ${{ needs.release-meta.outputs.prerelease }}
+          make_latest: ${{ needs.release-meta.outputs.prerelease == 'true' && 'false' || 'true' }}
           files: dist-artifacts/**/*
