@@ -68,12 +68,12 @@ pkgbuild \
   --identifier "$IDENTIFIER" \
   --version "$VERSION" \
   --install-location / \
-  "$COMPONENT_PKG"
+  "$COMPONENT_PKG" >&2
 
 productbuild \
   --identifier "$IDENTIFIER" \
   --version "$VERSION" \
   --package "$COMPONENT_PKG" \
-  "$OUTPUT_PKG"
+  "$OUTPUT_PKG" >&2
 
 printf '%s\n' "$OUTPUT_PKG"
