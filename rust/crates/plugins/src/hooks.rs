@@ -337,7 +337,11 @@ impl CommandWithStdin {
         let mut child = self.command.spawn()?;
         if let Some(mut child_stdin) = child.stdin.take() {
             use std::io::Write as _;
-            child_stdin.write_all(stdin)?;
+            match child_stdin.write_all(stdin) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+                Err(error) => return Err(error),
+            }
         }
         child.wait_with_output()
     }
@@ -501,5 +505,22 @@ mod tests {
             .messages()
             .iter()
             .any(|message| message == "later plugin hook"));
+    }
+
+    #[test]
+    fn pre_tool_use_allows_hooks_that_exit_without_reading_stdin() {
+        // given
+        let runner = HookRunner::new(crate::PluginHooks {
+            pre_tool_use: vec!["exit 0".to_string()],
+            post_tool_use: Vec::new(),
+            post_tool_use_failure: Vec::new(),
+        });
+        let large_input = "x".repeat(256 * 1024);
+
+        // when
+        let result = runner.run_pre_tool_use("Read", &format!(r#"{{"payload":"{large_input}"}}"#));
+
+        // then
+        assert_eq!(result, HookRunResult::allow(Vec::new()));
     }
 }
