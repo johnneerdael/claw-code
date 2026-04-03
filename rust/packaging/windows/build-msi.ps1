@@ -31,12 +31,12 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $ResolvedOutDir = (Resolve-Path $OutDir).Path
 $ResolvedOutFile = Join-Path $ResolvedOutDir (Split-Path -Leaf $OutFile)
 
-wix build `
+& wix build `
     $WixSource `
     -arch x64 `
     -d PayloadDir="$ResolvedPayloadDir" `
     -d ProductVersion="$ProductVersion" `
     -d UpgradeCode="$UpgradeCode" `
-    -o $ResolvedOutFile
+    -o $ResolvedOutFile 1>&2
 
 Write-Output $ResolvedOutFile

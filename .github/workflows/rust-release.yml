@@ -29,6 +29,7 @@ jobs:
       prerelease: ${{ steps.meta.outputs.prerelease }}
       asset_prefix: ${{ steps.meta.outputs.asset_prefix }}
       package_version: ${{ steps.meta.outputs.package_version }}
+      windows_package_version: ${{ steps.meta.outputs.windows_package_version }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -43,14 +44,17 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
             echo "asset_prefix=claw-${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             echo "package_version=${raw_version}" >> "$GITHUB_OUTPUT"
+            echo "windows_package_version=${raw_version}" >> "$GITHUB_OUTPUT"
           else
             package_version="$(date -u +'%Y.%-m%d').${GITHUB_RUN_NUMBER}"
+            windows_package_version="$(date -u +'%y').$(date -u +'%m').$(date -u +'%d')$(printf '%02d' $((GITHUB_RUN_NUMBER % 100))).0"
             echo "channel=snapshot" >> "$GITHUB_OUTPUT"
             echo "release_name=main-snapshot" >> "$GITHUB_OUTPUT"
             echo "release_tag=main-snapshot" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
             echo "asset_prefix=claw-main-${short_sha}" >> "$GITHUB_OUTPUT"
             echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+            echo "windows_package_version=${windows_package_version}" >> "$GITHUB_OUTPUT"
           fi
 
   test:
@@ -163,7 +167,7 @@ jobs:
         run: |
           $msiPath = ./packaging/windows/build-msi.ps1 `
             -PayloadDir dist/x86_64-pc-windows-msvc/payload `
-            -Version '${{ needs.release-meta.outputs.package_version }}' `
+            -Version '${{ needs.release-meta.outputs.windows_package_version }}' `
             -OutFile dist/x86_64-pc-windows-msvc/${{ needs.release-meta.outputs.asset_prefix }}-x86_64-pc-windows-msvc.msi
           "msi_path=$msiPath" >> $env:GITHUB_OUTPUT
       - name: Inspect MSI
